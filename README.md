@@ -61,7 +61,7 @@ After clicking 'Configure,' the following dialog box will pop up. Then, click 'S
 
 ## Bituo Dial (this fork)
 
-Official PMD only talks HTTP to EW meters (`GET /data` flat JSON). Dial returns an envelope `d.meters[]` with power already in **W**. This fork detects that payload and creates one HA device per meter.
+Office Home Assistant should use **this fork** (`bo706/BituoPMD`), not the official Script0803 repo. Official PMD only talks HTTP to EW meters (`GET /data` flat JSON). Dial returns an envelope `d.meters[]` with power already in **W**. This fork detects that payload, polls `/data` every 10s, skips EW `/hadata` / locate / OTA, and creates one HA device per BLE meter plus a Dial gateway.
 
 1. On the Dial, long-press Setup and turn **LAN web** on (HTTP is off by default).
 2. In Home Assistant → Devices & services → Add BituoPMD → **Use IP to pair devices**.

@@ -8,7 +8,7 @@ import requests
 
 _LOGGER = logging.getLogger(__name__)
 
-REQUEST_TIMEOUT = 8
+REQUEST_TIMEOUT = 12
 
 KIND_METER = "meter"
 KIND_DIAL = "dial"

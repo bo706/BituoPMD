@@ -9,7 +9,8 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from homeassistant.exceptions import ConfigEntryNotReady
-from .const import DOMAIN, CONF_HOST_IP
+from .const import DOMAIN, CONF_HOST_IP, CONF_KIND
+from .device_api import KIND_DIAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,6 +18,8 @@ SCAN_INTERVAL = timedelta(seconds=2)
 
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up switch platform."""
+    if entry.data.get(CONF_KIND) == KIND_DIAL:
+        return
     host_ip = entry.data[CONF_HOST_IP]
     coordinator = BituoDataUpdateCoordinator(hass, host_ip)
     try:

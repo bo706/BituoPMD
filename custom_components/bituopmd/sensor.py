@@ -27,7 +27,7 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 from packaging import version
-from .const import DOMAIN, CONF_HOST_IP, CONF_KIND
+from .const import DOMAIN, CONF_HOST_IP, CONF_KIND, DIAL_SCAN_INTERVAL, EW_SCAN_INTERVAL
 from .device_api import (
     DIAL_METER_EXCLUDE,
     KIND_DIAL,
@@ -103,13 +103,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     """Set up sensor platform."""
     host_ip = entry.data[CONF_HOST_IP]
     kind = entry.data.get(CONF_KIND)
-    current_scan_interval = settings["devices"].get(host_ip, {}).get("scan_interval", 5)
+    default_interval = DIAL_SCAN_INTERVAL if kind == KIND_DIAL else EW_SCAN_INTERVAL
+    current_scan_interval = settings["devices"].get(host_ip, {}).get(
+        "scan_interval", default_interval
+    )
     coordinator = BituoDataUpdateCoordinator(hass, host_ip, current_scan_interval, kind)
-    # Store the coordinator so it can be accessed by other platforms like button
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = {
-        'sensor_coordinator': coordinator
-    }
+    entry_store = hass.data.setdefault(DOMAIN, {}).setdefault(entry.entry_id, {})
+    entry_store["sensor_coordinator"] = coordinator
     await coordinator.async_config_entry_first_refresh()
 
     # Fetch device model and firmware version
@@ -122,6 +122,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     sensors = []
     if coordinator.is_dial:
         hub_id = f"dial-{host_ip}"
+        sensors.append(
+            DialHubSensor(
+                coordinator,
+                host_ip,
+                hub_id,
+                device_info.get("manufacturer", "BITUO TECHNIK"),
+            )
+        )
         for meter in (coordinator.data.get("meters") or {}).values():
             sn = meter.get("sn")
             label = meter.get("label") or sn
@@ -204,7 +212,8 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
 
     def get_scan_interval(self):
         """Get the scan interval from settings."""
-        return settings["devices"].get(self.host_ip, {}).get("scan_interval", 5)
+        default = DIAL_SCAN_INTERVAL if self.is_dial else EW_SCAN_INTERVAL
+        return settings["devices"].get(self.host_ip, {}).get("scan_interval", default)
     
     async def _periodically_update_scan_interval(self):
         """Periodically update the scan interval from settings.json."""
@@ -434,6 +443,31 @@ class BituoSensor(CoordinatorEntity, SensorEntity):
     def device_class(self):
         """Return the class of this device."""
         return self._attr_device_class
+
+class DialHubSensor(CoordinatorEntity, SensorEntity):
+    """Gateway sensor: how many BLE meters behind this Dial are online."""
+
+    def __init__(self, coordinator, host_ip, hub_id, manufacturer):
+        super().__init__(coordinator)
+        self._host_ip = host_ip
+        self._attr_name = "Online meters"
+        self._attr_unique_id = f"{hub_id}_online_count"
+        self.entity_id = f"sensor.{hub_id.replace('.', '_')}_online_count"
+        self._attr_icon = "mdi:counter"
+        self._attr_state_class = SensorStateClass.MEASUREMENT
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, hub_id)},
+            name=f"Bituo Dial - {host_ip}",
+            manufacturer=manufacturer,
+            model="bituo-dial",
+            configuration_url=f"http://{host_ip}",
+        )
+
+    @property
+    def native_value(self):
+        meters = (self.coordinator.data or {}).get("meters") or {}
+        return sum(1 for meter in meters.values() if meter.get("online"))
+
 
 class BituoOTASensor(CoordinatorEntity, SensorEntity):
     """Representation of an OTA status sensor."""
