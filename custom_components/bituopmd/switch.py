@@ -49,7 +49,6 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self):
         """Fetch data from the device."""
         try:
-            # Fetch data from /hadata
             response = await self.hass.async_add_executor_job(
                 requests.get, f"http://{self.host_ip}/hadata"
             )
@@ -64,8 +63,8 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
                 data["switchstatus"] = status
 
             return data
-        except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}")
+        except Exception:
+            return {}
 
     async def fetch_device_info(self):
         """Fetch device model and firmware version information."""

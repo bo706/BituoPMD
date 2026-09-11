@@ -4,7 +4,7 @@
 
 ### Install with HACS 
 
-[![Open BituoPMD inside your Home Assistant Community Store (HACS).](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=Script0803&repository=bituopmd&category=integration) 👈Click this button to install.(Recommended)
+[![Open BituoPMD inside your Home Assistant Community Store (HACS).](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=bo706&repository=BituoPMD&category=integration) 👈Click this button to install.(Recommended)
 
 1. Open HACS (Home Assistant Community Store).
 2. Navigate to Integrations.
@@ -57,6 +57,18 @@ After clicking 'Configure,' the following dialog box will pop up. Then, click 'S
 - SPM02-xxEW [[More details]](https://shop.bituo-technik.com/products/esp32-wifi-energy-meter-spm02-3p-n-63a-copy)
 - SDM01-EWx  [[More details]](https://shop.bituo-technik.com/products/sdm01-ew0-energy-meter-3p-n-up-to-200a-esp32-wi-fi-ble)
 - SDM02-EW   [[More details]](https://shop.bituo-technik.com/collections/all)
+- **Bituo Dial** (this fork): BLE meters behind a Dial gateway. Manual IP of the Dial STA (LAN web must be enabled on the round screen). Does not change Dial firmware.
+
+## Bituo Dial (this fork)
+
+Official PMD only talks HTTP to EW meters (`GET /data` flat JSON). Dial returns an envelope `d.meters[]` with power already in **W**. This fork detects that payload and creates one HA device per meter.
+
+1. On the Dial, long-press Setup and turn **LAN web** on (HTTP is off by default).
+2. In Home Assistant → Devices & services → Add BituoPMD → **Use IP to pair devices**.
+3. Enter the Dial STA IP (lab example `192.168.50.151`).
+4. Confirm voltage/current/power entities update. Do not use Locate / factory erase / URL-OTA on a Dial entry.
+
+Do not re-provision the BLE meters onto Wi-Fi; leave them on the Dial.
 
 ## Detail information
 
