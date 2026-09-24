@@ -4,11 +4,12 @@
   "codeowners": ["@bo706"],
   "config_flow": true,
   "dependencies": ["http"],
+  "after_dependencies": ["mqtt"],
   "documentation": "https://github.com/bo706/BituoPMD",
   "integration_type": "device",
-  "iot_class": "local_polling",
+  "iot_class": "local_push",
   "issue_tracker": "https://github.com/bo706/BituoPMD/issues",
   "requirements": [],
-  "version": "1.1.1",
+  "version": "1.1.2",
   "zeroconf": ["_http._tcp.local."]
 }

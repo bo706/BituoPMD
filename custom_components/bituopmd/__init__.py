@@ -24,6 +24,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     host_ip = entry.data[CONF_HOST_IP]
     _LOGGER.info("Setting up BituoPMD integration for %s", host_ip)
 
+    kind = entry.data.get(CONF_KIND)
+    dial_sn = entry.data.get(CONF_DIAL_SN)
+    if kind == KIND_DIAL and dial_sn:
+        _LOGGER.info("Dial %s already known, skip HTTP probe", dial_sn)
+        platforms = _platforms_for_kind(KIND_DIAL)
+        hass.data[DOMAIN][entry.entry_id] = {"platforms": platforms}
+        await hass.config_entries.async_forward_entry_setups(entry, platforms)
+        await setup_frontend(hass)
+        return True
+
     try:
         probed = await hass.async_add_executor_job(probe_device, host_ip)
     except DeviceProbeError as e:
