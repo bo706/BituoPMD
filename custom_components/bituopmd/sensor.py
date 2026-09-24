@@ -19,6 +19,7 @@ try:
 except (ImportError, AttributeError):
     from homeassistant.const import POWER_VOLT_AMPERE_REACTIVE
 
+from homeassistant.core import callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass
 from homeassistant.helpers.update_coordinator import (
@@ -100,6 +101,22 @@ STATE_CLASSES = {
 
 EXCLUDE_FIELDS = {"Post", "Time", "Config485", "MqttStatus", "ProductModel", "IP", "SerialNumber", "DeviceType", "FWVersion", "MCUVersion", "Manufactor"}
 
+DIAL_SENSOR_FIELDS = (
+    "VoltageX",
+    "VoltageY",
+    "VoltageZ",
+    "CurrentX",
+    "CurrentY",
+    "CurrentZ",
+    "ActivePowerX",
+    "ActivePowerY",
+    "ActivePowerZ",
+    "TotalActivePower",
+    "TotalForwardEnergy",
+    "TotalReverseEnergy",
+    "RSSI",
+)
+
 async def async_setup_entry(hass, entry, async_add_entities):
     """Set up sensor platform."""
     host_ip = entry.data[CONF_HOST_IP]
@@ -112,6 +129,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
     entry_store = hass.data.setdefault(DOMAIN, {}).setdefault(entry.entry_id, {})
     entry_store["sensor_coordinator"] = coordinator
     await coordinator.async_enable_mqtt()
+    if coordinator.is_dial:
+        await asyncio.sleep(1)
     await coordinator.async_config_entry_first_refresh()
 
     # Fetch device model and firmware version
@@ -134,10 +153,18 @@ async def async_setup_entry(hass, entry, async_add_entities):
         )
         for meter in (coordinator.data.get("meters") or {}).values():
             sn = meter.get("sn")
+            if not sn:
+                continue
             label = meter.get("label") or sn
+            fields = list(DIAL_SENSOR_FIELDS)
             for field in meter.keys():
-                if field in DIAL_METER_EXCLUDE or field in ("sn", "label", "online"):
-                    continue
+                if (
+                    field not in fields
+                    and field not in DIAL_METER_EXCLUDE
+                    and field not in ("sn", "label", "online")
+                ):
+                    fields.append(field)
+            for field in fields:
                 sensors.append(
                     BituoSensor(
                         coordinator,
@@ -174,7 +201,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         sensors.append(ota_sensor)
         coordinator.ota_entity = ota_sensor
 
-    async_add_entities(sensors, True)
+    async_add_entities(sensors, False)
 
     async def handle_set_frequency(call):
         """Handle the service call to set the data fetch frequency."""
@@ -202,6 +229,11 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
         self.host_ip = entry.data[CONF_HOST_IP]
         self.kind = entry.data.get(CONF_KIND)
         self.dial_sn = entry.data.get(CONF_DIAL_SN)
+        unique_id = entry.unique_id or ""
+        if not self.dial_sn and unique_id.startswith("dial-"):
+            self.dial_sn = unique_id[5:]
+        if self.dial_sn:
+            self.kind = KIND_DIAL
         self.ota_versions = load_ota_versions()
         self.ota_entity = None
         self._mqtt_unsubs = []
@@ -245,6 +277,7 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
             data["dial_sn"] = self.dial_sn
         self.async_set_updated_data(data)
 
+    @callback
     def _on_mqtt_meter(self, msg):
         raw = msg.payload
         if isinstance(raw, bytes):
@@ -258,6 +291,38 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
             return
         self._merge_meter(meter)
 
+    @callback
+    def _on_mqtt_mdata(self, msg):
+        raw = msg.payload
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return
+        if payload.get("dial_sn"):
+            self.dial_sn = payload.get("dial_sn") or self.dial_sn
+        data = dict(self.data or {})
+        meters = dict(data.get("meters") or {})
+        changed = False
+        for item in payload.get("meters") or []:
+            if not isinstance(item, dict) or not item.get("sn"):
+                continue
+            sn = item.get("sn")
+            prev = dict(meters.get(sn) or {"sn": sn, "online": False})
+            prev["sn"] = sn
+            prev["label"] = item.get("label") or prev.get("label") or sn
+            meters[sn] = prev
+            changed = True
+        if not changed and not payload.get("dial_sn"):
+            return
+        data["meters"] = meters
+        data["_kind"] = KIND_DIAL
+        if self.dial_sn:
+            data["dial_sn"] = self.dial_sn
+        self.async_set_updated_data(data)
+
+    @callback
     def _on_mqtt_summary(self, msg):
         raw = msg.payload
         if isinstance(raw, bytes):
@@ -293,11 +358,17 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
     async def async_enable_mqtt(self):
         """Dial publishes outbound MQTT even when inbound HTTP is unreachable."""
         if not self.is_dial or not self.dial_sn:
+            _LOGGER.warning("Dial MQTT skip: kind=%s sn=%s", self.kind, self.dial_sn)
             return
         try:
             from homeassistant.components import mqtt
         except Exception as err:
-            _LOGGER.warning("MQTT component missing, Dial stays on HTTP: %s", err)
+            _LOGGER.warning("MQTT component missing, Dial stays on last data: %s", err)
+            return
+        try:
+            await mqtt.async_wait_for_mqtt_client(self.hass)
+        except Exception as err:
+            _LOGGER.warning("MQTT client not ready: %s", err)
             return
         try:
             self._mqtt_unsubs.append(
@@ -305,6 +376,14 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
                     self.hass,
                     f"bituo-dial/{self.dial_sn}/meters/+/data",
                     self._on_mqtt_meter,
+                    0,
+                )
+            )
+            self._mqtt_unsubs.append(
+                await mqtt.async_subscribe(
+                    self.hass,
+                    f"bituo-dial/{self.dial_sn}/mdata",
+                    self._on_mqtt_mdata,
                     0,
                 )
             )
@@ -335,11 +414,19 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
             await asyncio.sleep(60)
 
     async def _async_update_data(self):
-        """Fetch data from the device. Dial HTTP is optional; MQTT is the live path."""
+        """EW meters poll HTTP. Dial is MQTT-only; HTTP /data is often unreachable."""
+        if self.is_dial:
+            if self.data:
+                return self.data
+            return {
+                "_kind": KIND_DIAL,
+                "dial_sn": self.dial_sn,
+                "meters": self._meters_from_registry(),
+            }
         try:
             probed = await self.hass.async_add_executor_job(probe_device, self.host_ip)
-            self.kind = probed["kind"]
             if probed["kind"] == KIND_DIAL:
+                self.kind = KIND_DIAL
                 self.dial_sn = probed.get("dial_sn") or self.dial_sn
                 meters = {meter["sn"]: meter for meter in probed["meters"]}
                 return {
@@ -349,15 +436,6 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
                 }
             return scale_ew_power_fields(dict(probed.get("payload") or {}))
         except (DeviceProbeError, Exception) as err:
-            if self.is_dial:
-                _LOGGER.debug("Dial HTTP %s unavailable (%s), keep MQTT/last data", self.host_ip, err)
-                if self.data:
-                    return self.data
-                return {
-                    "_kind": KIND_DIAL,
-                    "dial_sn": self.dial_sn,
-                    "meters": self._meters_from_registry(),
-                }
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
     async def fetch_device_info(self):

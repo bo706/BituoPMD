@@ -16,6 +16,20 @@ def _platforms_for_kind(kind):
         return [Platform.SENSOR, Platform.BUTTON]
     return list(PLATFORMS)
 
+def _dial_sn_from_entry(entry: ConfigEntry):
+    sn = entry.data.get(CONF_DIAL_SN)
+    if sn:
+        return sn
+    unique_id = entry.unique_id or ""
+    if unique_id.startswith("dial-"):
+        return unique_id[5:]
+    title = entry.title or ""
+    prefix = "Bituo Dial "
+    if title.startswith(prefix):
+        return title[len(prefix):].strip()
+    return None
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up BituoPMD integration from a config entry."""
     if DOMAIN not in hass.data:
@@ -25,9 +39,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _LOGGER.info("Setting up BituoPMD integration for %s", host_ip)
 
     kind = entry.data.get(CONF_KIND)
-    dial_sn = entry.data.get(CONF_DIAL_SN)
-    if kind == KIND_DIAL and dial_sn:
-        _LOGGER.info("Dial %s already known, skip HTTP probe", dial_sn)
+    dial_sn = _dial_sn_from_entry(entry)
+    if kind == KIND_DIAL or dial_sn:
+        if not dial_sn:
+            dial_sn = "DIAL"
+        new_data = dict(entry.data)
+        if new_data.get(CONF_KIND) != KIND_DIAL or new_data.get(CONF_DIAL_SN) != dial_sn:
+            new_data[CONF_KIND] = KIND_DIAL
+            new_data[CONF_DIAL_SN] = dial_sn
+            hass.config_entries.async_update_entry(entry, data=new_data)
+        _LOGGER.info("Dial %s: skip HTTP probe, use MQTT", dial_sn)
         platforms = _platforms_for_kind(KIND_DIAL)
         hass.data[DOMAIN][entry.entry_id] = {"platforms": platforms}
         await hass.config_entries.async_forward_entry_setups(entry, platforms)
