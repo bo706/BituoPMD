@@ -59,16 +59,16 @@ After clicking 'Configure,' the following dialog box will pop up. Then, click 'S
 - SPM02-xxEW [[More details]](https://shop.bituo-technik.com/products/esp32-wifi-energy-meter-spm02-3p-n-63a-copy)
 - SDM01-EWx  [[More details]](https://shop.bituo-technik.com/products/sdm01-ew0-energy-meter-3p-n-up-to-200a-esp32-wi-fi-ble)
 - SDM02-EW   [[More details]](https://shop.bituo-technik.com/collections/all)
-- **Bituo Dial** (this fork): BLE meters behind a Dial gateway. Manual IP of the Dial STA (LAN web must be enabled on the round screen). Does not change Dial firmware.
+- **Bituo Dial** (this fork): BLE meters behind a Dial gateway. Pair once by Dial STA IP if HTTP is reachable; afterwards telemetry is MQTT. Does not change Dial firmware.
 
 ## Bituo Dial (this fork)
 
-Office Home Assistant should use **this fork** (`bo706/BituoPMD`), not the official Script0803 repo. Official PMD only talks HTTP to EW meters (`GET /data` flat JSON). Dial returns an envelope `d.meters[]` with power already in **W**. This fork detects that payload, polls `/data` every 10s, skips EW `/hadata` / locate / OTA, and creates one HA device per BLE meter plus a Dial gateway.
+Office Home Assistant should use **this fork** (`bo706/BituoPMD`), not the official Script0803 repo. Official PMD only talks HTTP to EW meters (`GET /data` flat JSON). Dial publishes MQTT (`bituo-dial/{DialSN}/meters/{MeterSN}/data`, power already in **W**). This fork subscribes to that telemetry, skips EW `/hadata` / locate / OTA, and creates one HA device per BLE meter plus a Dial gateway.
 
-1. On the Dial, long-press Setup and turn **LAN web** on (HTTP is off by default).
-2. In Home Assistant → Devices & services → Add BituoPMD → **Use IP to pair devices**.
-3. Enter the Dial STA IP (lab example `192.168.50.151`).
-4. Confirm voltage/current/power entities update. Do not use Locate / factory erase / URL-OTA on a Dial entry.
+1. HA MQTT integration must use the **same broker** as the Dial.
+2. In Home Assistant → Devices & services → Add BituoPMD → **Use IP to pair devices** (first pairing may still need Dial LAN web once).
+3. After that, entities update from MQTT even if Dial `:80` is unreachable.
+4. Confirm voltage/current/power entities update. Do not use Locate / factory erase / URL-OTA on a Dial entry. Reload the integration after adding/removing meters on the Dial.
 
 Do not re-provision the BLE meters onto Wi-Fi; leave them on the Dial.
 

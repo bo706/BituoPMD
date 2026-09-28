@@ -248,19 +248,45 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
         return self.kind == KIND_DIAL
 
     def _meters_from_registry(self):
-        """Reuse SNs already created by a previous successful HTTP setup."""
+        """Reuse SNs and labels already created by a previous setup."""
+        from homeassistant.helpers import device_registry as dr
         from homeassistant.helpers import entity_registry as er
 
         meters = {}
         registry = er.async_get(self.hass)
+        devices = dr.async_get(self.hass)
         for ent in registry.entities.values():
             if ent.config_entry_id != self.entry.entry_id:
                 continue
             uid = ent.unique_id or ""
             sn = uid.split("_", 1)[0]
-            if len(sn) == 12:
-                meters.setdefault(sn, {"sn": sn, "label": sn, "online": False})
+            if len(sn) != 12:
+                continue
+            label = sn
+            device = devices.async_get_device({(DOMAIN, sn)})
+            if device:
+                label = device.name_by_user or device.name or sn
+            meters.setdefault(sn, {"sn": sn, "label": label, "online": False})
         return meters
+
+    def _apply_meter_names(self, meters):
+        from homeassistant.helpers import device_registry as dr
+
+        registry = dr.async_get(self.hass)
+        for sn, meter in meters.items():
+            label = meter.get("label")
+            if not label:
+                continue
+            device = registry.async_get_device({(DOMAIN, sn)})
+            if device is None:
+                continue
+            kwargs = {}
+            if device.name != label:
+                kwargs["name"] = label
+            if device.name_by_user in (None, sn) and label != sn:
+                kwargs["name_by_user"] = label
+            if kwargs:
+                registry.async_update_device(device.id, **kwargs)
 
     def _merge_meter(self, meter):
         data = dict(self.data or {})
@@ -321,6 +347,7 @@ class BituoDataUpdateCoordinator(DataUpdateCoordinator):
         if self.dial_sn:
             data["dial_sn"] = self.dial_sn
         self.async_set_updated_data(data)
+        self._apply_meter_names(meters)
 
     @callback
     def _on_mqtt_summary(self, msg):
@@ -525,17 +552,43 @@ class BituoSensor(CoordinatorEntity, SensorEntity):
                 configuration_url=f"http://{host_ip}"  # embed URL
             )
         self._host_ip = host_ip
+        self._hub_id = hub_id
+        self._manufacturer = manufacturer
+        self._fw_version = fw_version
+        self._mcu_version = mcu_version
         self._native_unit_of_measurement = self.get_initial_unit_of_measurement()
         self._attr_state_class = self.get_state_class()
         self._attr_device_class = self.get_device_class()
-
-        # Set default precision for power data
         if "power" in self._field.lower() and "active" in self._field.lower():
             self._attr_suggested_display_precision = 0
         if "power" in self._field.lower() and "apparent" in self._field.lower():
             self._attr_suggested_display_precision = 0
         if "unbalancelinecurrents" in self._field.lower():
             self._attr_suggested_display_precision = 0
+
+    def _meter_label(self):
+        if not self._sn:
+            return None
+        meter = ((self.coordinator.data or {}).get("meters") or {}).get(self._sn) or {}
+        return meter.get("label") or self._sn
+
+    @property
+    def device_info(self):
+        if not self._sn:
+            return self._attr_device_info
+        label = self._meter_label()
+        via_device = (DOMAIN, self._hub_id) if self._hub_id else None
+        info = {
+            "identifiers": {(DOMAIN, self._sn)},
+            "name": label,
+            "manufacturer": self._manufacturer,
+            "model": label,
+            "sw_version": f"S{self._fw_version}_M{self.format_version(self._mcu_version)}",
+            "configuration_url": f"http://{self._host_ip}",
+        }
+        if via_device:
+            info["via_device"] = via_device
+        return DeviceInfo(**info)
 
     def get_initial_unit_of_measurement(self):
         """Determine the initial unit of measurement based on the field."""

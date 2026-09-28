@@ -2,7 +2,7 @@
 
 仓库：[https://github.com/bo706/BituoPMD](https://github.com/bo706/BituoPMD)  
 这是官方插件 [script0803/BituoPMD](https://github.com/script0803/BituoPMD) 的 fork，**不是** Dial 圆屏固件。  
-当前版本：`1.1.1`。
+当前版本：`1.1.4`。
 
 ---
 
@@ -27,7 +27,7 @@
 |---|---|---|
 | 能接什么 | 只有 EW 电表 | EW 电表 + Dial 网关 |
 | 怎么加 Dial | 加不上 | 手动填 Dial 的 IP |
-| 数据怎么来 | 每 5 秒访问电表网页 | Dial：每 10 秒访问 Dial 的 `/data` |
+| 数据怎么来 | 每 5 秒访问电表网页 | Dial：订阅 MQTT（`bituo-dial/{DialSN}/…`），不再轮询网页 |
 | 功率单位 | EW 是 kW，插件会 ×1000 变成 W | Dial 本身已经是 W，**不再 ×1000** |
 | 不该对 Dial 用的功能 | 定位灯、恢复出厂、网页 OTA、开关口 | 已跳过（Dial 没有这些 EW 接口） |
 
@@ -75,11 +75,11 @@ HACS 里可能同时出现两个「BituoPMD」：一个是官方仓库，一个�
 
 - `device_api.py`：判断对方是 EW 还是 Dial；Dial 按信封拆成多块表
 - `config_flow.py`：手动填 IP 时走上面的识别
-- `sensor.py`：Dial 每块表一个设备；网关有「在线表数」；10 秒轮询
+- `sensor.py`：Dial 每块表一个设备；网关有「在线表数」；订阅 MQTT 遥测
 - `__init__.py` / `switch.py`：Dial 不加载开关平台，避免去打不存在的 `/hadata`
 - `button.py`：Dial 不提供定位按钮
 - `translations/`：中英文提示里写明可以填 Dial IP
-- `manifest.json`：版本 `1.1.1`
+- `manifest.json`：版本 `1.1.4`
 
 ---
 
