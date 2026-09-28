@@ -1,6 +1,6 @@
 # Bituo Device for Home Assistant
 
-**给领导 / 测试的中文说明：[说明-Dial接入.md](说明-Dial接入.md)**
+**测试的中文说明：[说明-Dial接入.md](说明-Dial接入.md)**
 
 ## Installation
 
