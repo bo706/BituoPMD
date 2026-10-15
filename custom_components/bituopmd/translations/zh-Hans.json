@@ -10,7 +10,7 @@
       },
       "manual": {
         "title": "设备 IP",
-        "description": "填 EW 电表 IP，或 Dial 的 STA IP（圆屏需先打开局域网网页）。Dial 示例：192.168.50.151",
+        "description": "填 EW 电表 IP，或 Dial 的 STA IP（圆屏需先打开局域网网页）。",
         "data": {
           "host_ip": "IP 地址"
         }

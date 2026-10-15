@@ -10,7 +10,7 @@
       },
       "manual": {
         "title": "Device IP",
-        "description": "EW meter STA IP, or Dial STA IP (LAN web must be on). Example Dial: 192.168.50.151",
+        "description": "EW meter STA IP, or Dial STA IP (LAN web must be on).",
         "data": {
           "host_ip": "IP address"
         }
